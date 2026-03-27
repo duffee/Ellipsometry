@@ -1,6 +1,7 @@
 use strict;
 use warnings;
 use PDL;
+use PDL::NiceSlice;
 use VASE;
 
 # Create VASE object with 1 layer
