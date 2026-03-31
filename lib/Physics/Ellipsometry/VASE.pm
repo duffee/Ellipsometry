@@ -19,20 +19,61 @@ sub new {
     return $self;
 }
 
-# Load data from file
+# Load data from file (auto-detects Woollam VASE format)
 sub load_data {
     my ($self, $filename) = @_;
     open my $fh, '<', $filename or die "Cannot open $filename: $!";
     my @lines = <$fh>;
     close $fh;
+
+    # Detect Woollam VASE format: line 2 starts with VASEmethod[
+    my $is_woollam = (@lines >= 4 && $lines[1] =~ /^VASEmethod\[/);
+
     my @data;
-    for my $line (@lines) {
-        next if $line =~ /^\s*#/;   # skip comment lines
-        next if $line =~ /^\s*$/;    # skip blank lines
-        my @fields = split ' ', $line;
-        push @data, \@fields;
+    if ($is_woollam) {
+        # Parse Woollam header
+        chomp(my $sample_name = $lines[0]);
+        $self->{sample_name} = $sample_name;
+
+        if ($lines[1] =~ /^VASEmethod\[(.+)\]/) {
+            $self->{vase_method} = $1;
+        }
+
+        if ($lines[2] =~ /^Original\[(.+)\]/) {
+            $self->{original_file} = $1;
+        }
+
+        chomp(my $units = $lines[3]);
+        $self->{units} = $units;
+
+        # Data starts at line 5 (index 4)
+        for my $i (4 .. $#lines) {
+            my $line = $lines[$i];
+            chomp $line;
+            next if $line =~ /^\s*$/;
+            my @fields = split ' ', $line;
+            # Skip lines whose first field is not numeric (e.g. Mueller labels)
+            next unless $fields[0] =~ /^[-+]?\d*\.?\d+([eE][-+]?\d+)?$/;
+            push @data, \@fields;
+        }
+    } else {
+        # Original format: skip #comments and blank lines
+        for my $line (@lines) {
+            next if $line =~ /^\s*#/;   # skip comment lines
+            next if $line =~ /^\s*$/;    # skip blank lines
+            my @fields = split ' ', $line;
+            push @data, \@fields;
+        }
     }
+
     my $data = pdl \@data;
+
+    # Woollam files have 6 columns; extract sigma and keep standard 4
+    if ($is_woollam && $data->getdim(0) >= 6) {
+        $self->{sigma} = $data->(4:5,:);
+        $data = $data->(0:3,:)->sever;
+    }
+
     $self->{data} = $data;
     return $data;
 }
@@ -55,7 +96,14 @@ sub fit {
 
     # Build y to match model output order: [psi_all, delta_all]
     my $y_data = $data->((2),:)->flat->append($data->((3),:)->flat);
-    my $sigma  = ones($y_data->nelem);
+
+    # Use measured uncertainties from Woollam data when available
+    my $sigma;
+    if (defined $self->{sigma}) {
+        $sigma = $self->{sigma}->((0),:)->flat->append($self->{sigma}->((1),:)->flat);
+    } else {
+        $sigma = ones($y_data->nelem);
+    }
 
     # lmfit sizes $dyda from $x->getdim(0), so pass a dummy x whose
     # first dimension equals the number of y values (2*npts)
