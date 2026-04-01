@@ -2,13 +2,13 @@ use strict;
 use warnings;
 use PDL;
 use PDL::NiceSlice;
-use VASE;
+use Physics::Ellipsometry::VASE;
 
 # Create VASE object with 1 layer
-my $vase = VASE->new(layers => 1);
+my $vase = Physics::Ellipsometry::VASE->new(layers => 1);
 
 # Load sample data
-$vase->load_data('data/sample.dat');
+$vase->load_data('./data/Metal_Oxides/tantalum oxide/Cap_11012006/w1_11012006.dat');
 
 # Define model function (linear model example)
 sub model {
