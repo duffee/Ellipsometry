@@ -1,0 +1,31 @@
+                           Arizona State University
+
+Probe Model S/N: 041130               Operator Name: JMT
+Probe Head Type:                      Fab Name     : 
+Probe Head S/N :                      Lot ID       : 
+Probe Head Crrt: 1                    Equip Info   : 
+Pin Spacing    : 1 mm                 Device No.   : 
+                                      Group Name   : 
+Process Type   : 9POINT_SEMI          Wafer ID     : w2_Ta_10102006
+Layer Type     : N                    Test Number  : 1 
+Thickness      : 0.1800000 Micron     Date (M/D/Y) : 10/10/2006 10:52:33
+Spec low limit : 0 Ohm/sq             Mean         : 7.393473 Ohm/sq
+Spec high limit: 200000 Ohm/sq        Std Deviation: 2.782797 %
+Data low limit : 0 Ohm/sq             Min, Max     : 7.2175 ; 7.8 
+Data high limit: 200000 Ohm/sq        Range        : 0.5825 Ohm/sq
+Wafer Size     : 150 mm               Points Tested: 9 
+Flat/Notch     : FLAT                 Sort Criteria: 0 %;  3 Sigma
+Max Test Dia.  : 130 mm               Contour      : 
+                                      Carrier Dens.: 1.262136e+16 ions/sq-cm
+Geometric Crrct: OFF                  Mean Ohm-cm  : 1.330825e-04
+Gain Control   : AUTO                 Uniformity   : 3.878808 %
+Cassette ID    : 
+
+Symbols : *=deleted by sort   $=Potential   x=Bad Contact   +=Over Scale
+
+
+Values are resistivity in Ohm/sq
+
+1.   7.217500           2.   7.350000             3.   7.677500
+4.   7.247500           5.   7.297500             6.   7.238750
+7.   7.320000           8.   7.392500             9.   7.800000
