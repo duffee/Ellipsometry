@@ -2,14 +2,17 @@ use strict;
 use warnings;
 use PDL;
 use PDL::NiceSlice;
+use PDL::Math;
 use Physics::Ellipsometry::VASE;
-use PDL::Constants qw(PI E);
+use PDL::Constants qw(PI);
+use FindBin;
 
 # Create VASE object with 1 layer
 my $vase = Physics::Ellipsometry::VASE->new(layers => 1);
 
 # Load sample data
-$vase->load_data('w1_11012006.dat');
+my $data_file = "$FindBin::Bin/../data/Metal_Oxides/tantalum oxide/Cap_11012006/w1_11012006.dat";
+$vase->load_data($data_file);
 
 # Define model function (linear model example)
 sub model {
@@ -34,14 +37,16 @@ sub model {
 sub cauchy_model {
 	my ($params, $x) = @_;
 	
-	# Unpack parameters
-	my $a = $params->(0);
-	my $b = $params->(1);
-	my $c = $params->(2);
+	# Fit parameters: [A, B_scaled, n2, d]
+	# B_scaled = B / 1e4 so all params are order ~1
+	my $a  = $params->(0);
+	my $b  = $params->(1) * 1e4;  # rescale B back to nm^2
+	my $n2 = $params->(2);        # substrate index
+	my $d  = $params->(3);        # thickness [nm]
 	
-	my $n0 = $params->(3); # ambient index
-	my $n2 = $params->(4); # substrate index
-	my $d = $params->(5); # thickness [nm]
+	# Fixed values
+	my $n0 = 1.0;    # ambient (air)
+	my $c  = 0.0;    # Cauchy C-term (negligible for most films)
 	
 	# 
 	# Unpack independent vars
@@ -53,15 +58,16 @@ sub cauchy_model {
 	# Film refractive index from Cauchy
 	#
 	my $n1 = $a + $b / ($lambda**2) + $c / ($lambda**4);
-	my $k1 = zeroes($lambda); # transparent
 	
 	#
-	# Snell's law
+	# Snell's law (clamp to avoid NaN from asin during fitting)
 	#
 	my $sin_theta1 = $n0 * sin($theta0) / $n1;
+	$sin_theta1 = $sin_theta1->clip(-0.999, 0.999);
 	my $theta1 = asin($sin_theta1);
 	
 	my $sin_theta2 = $n0 * sin($theta0) / $n2;
+	$sin_theta2 = $sin_theta2->clip(-0.999, 0.999);
 	my $theta2 = asin($sin_theta2);
 	
 	#
@@ -93,7 +99,7 @@ sub cauchy_model {
 	# r = (r01 + r12 exp(-2 i beta)) / (1 + r01 r12 exp(-2 i beta))
 	#
 
-	my $phase = exp(-2*i*$beta);
+	my $phase = exp(-2*i()*$beta);
 	my $rs = ($r01s + $r12s*$phase) / (1 + $r01s*$r12s*$phase);
 	my $rp = ($r01p + $r12p*$phase) / (1 + $r01p*$r12p*$phase);
 
@@ -106,10 +112,10 @@ sub cauchy_model {
 	# Psi and Delta
 	#
 
-	my $psi = atan( abs($rho) ); # tan(psi) = |rp/rs|
-	my $delta = arg($rho);		 # delata = phase(rp/rs)
+	my $psi = atan( abs($rho) ) * (180.0 / PI); # tan(psi) = |rp/rs|, convert to degrees
+	my $delta = carg($rho) * (180.0 / PI);       # delta = phase(rp/rs), convert to degrees
 
-	return cat($psi, $delta)->flat;
+	return cat($psi->re, $delta->re)->flat->double;
 	
 }
 
@@ -118,19 +124,27 @@ $vase->set_model(\&cauchy_model);
 
 # Initial parameters: [a, b, c, d] for linear model (exact solution for sample data)
 # my $initial_params = pdl [65, 0.05, 80, 0.1];
-my $initial_params = pdl [65, 0.05, 80, 1.0, 4.0, 1.0];
+# Cauchy params: [A, B_scaled, n_substrate, thickness(nm)]
+# B_scaled = B/1e4 so all params are similar magnitude
+# Ta2O5 typical: A~2.06, B~10000-20000 nm^2
+my $initial_params = pdl [2.06, 1.5, 3.87, 100.0];
 
 # Perform fit
 my $fit_params = $vase->fit($initial_params);
 
 # Extract results
-my ($a, $b, $c, $n0, $n2, $d) = list $fit_params;
+my ($a, $b_scaled, $n2, $d) = list $fit_params;
+my $b = $b_scaled * 1e4;
 print "Fit results:\n";
-print "a: $a\n";
-print "b: $b\n";
-print "c: $c\n";
-print "n0: $n0\n";
-print "n2: $n2\n";
-print "d: $d\n";
-print "  Psi   = $a - $b * wavelength\n";
-print "  Delta = $c + $d * wavelength\n";
+printf "  Cauchy A:       %.6f\n", $a;
+printf "  Cauchy B:       %.2f nm^2\n", $b;
+printf "  n_substrate:    %.4f\n", $n2;
+printf "  Thickness:      %.2f nm\n", $d;
+printf "  Iterations:     %d\n", $vase->{iters};
+print "\n  n(lambda) = $a + $b / lambda^2\n";
+
+# Plot fit vs data — save to PNG
+$vase->plot($fit_params,
+    output => "$FindBin::Bin/cauchy_fit.png",
+    title  => 'Ta_2O_5 Cauchy Fit — w1\_11012006',
+);

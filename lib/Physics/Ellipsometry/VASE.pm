@@ -118,9 +118,10 @@ sub fit {
 
         # Numerical partial derivatives via finite differences
         my $np  = $par->nelem;
-        my $eps = 1e-7;
         for my $i (0 .. $np - 1) {
             my $par_h = $par->copy;
+            my $p_i = $par->slice("($i)")->sclr;
+            my $eps = abs($p_i) * 1e-7 + 1e-10;
             $par_h->slice("($i)") += $eps;
             $dyda->slice(",($i)") .= (&$model($par_h, $x_data) - $y_model) / $eps;
         }
@@ -130,6 +131,10 @@ sub fit {
         $x_fit, $y_data, $sigma, $fit_func, $initial_params,
         {Maxiter => 300, Eps => 1e-7}
     );
+
+    $self->{covar} = $covar;
+    $self->{iters} = $iters;
+    $self->{ym}    = $ym;
 
     return $finalp;
 }
@@ -143,6 +148,7 @@ sub plot {
     my $model = $self->{model};
 
     my $wavelength = $data->((0),:)->flat;
+    my $angles     = $data->((1),:)->flat;
     my $psi_data   = $data->((2),:)->flat;
     my $delta_data = $data->((3),:)->flat;
 
@@ -155,6 +161,14 @@ sub plot {
 
     my $output = $opts{output};
     my $title  = $opts{title} // 'VASE Fit Results';
+
+    # Find unique angles for grouping
+    my @unique_angles = sort { $a <=> $b }
+                        do { my %s; grep { !$s{$_}++ } list $angles };
+
+    # Color palette for multiple angles
+    my @colors = ('#0072B2', '#D55E00', '#009E73', '#CC79A7', '#F0E442',
+                  '#56B4E9', '#E69F00', '#000000');
 
     # Select terminal and construct gpwin
     my $gp;
@@ -170,8 +184,39 @@ sub plot {
         $gp = PDL::Graphics::Gnuplot::gpwin(enhanced => 1);
     }
 
-    # Multiplot: Psi on top, Delta on bottom (rows, cols)
+    # Multiplot: Psi on top, Delta on bottom
     $gp->multiplot(layout => [1, 2], title => $title);
+
+    # Build plot curves grouped by angle
+    my (@psi_curves, @delta_curves);
+    for my $ai (0 .. $#unique_angles) {
+        my $ang = $unique_angles[$ai];
+        my $mask = ($angles == $ang);
+        my $idx = which($mask);
+        my $wl   = $wavelength->index($idx);
+        my $psid = $psi_data->index($idx);
+        my $deld = $delta_data->index($idx);
+        my $psif = $psi_fit->index($idx);
+        my $delf = $delta_fit->index($idx);
+        my $col  = $colors[$ai % scalar @colors];
+        my $label = sprintf("%.1f{/Symbol \260}", $ang);
+
+        push @psi_curves,
+            (with => 'points', legend => "$label data",
+                pt => 7, ps => 0.6, lc => "rgb \"$col\"",
+                $wl, $psid),
+            (with => 'lines', legend => "$label fit",
+                lw => 2, lc => "rgb \"$col\"",
+                $wl, $psif);
+
+        push @delta_curves,
+            (with => 'points', legend => "$label data",
+                pt => 7, ps => 0.6, lc => "rgb \"$col\"",
+                $wl, $deld),
+            (with => 'lines', legend => "$label fit",
+                lw => 2, lc => "rgb \"$col\"",
+                $wl, $delf);
+    }
 
     # --- Psi panel ---
     $gp->plot(
@@ -179,12 +224,7 @@ sub plot {
           xlabel => '',
           ylabel => '{/Symbol Y} (deg)',
           key    => 'top right box' },
-        with => 'points', legend => 'Data',
-            pt => 7, ps => 1.2, lc => 'rgb "#0072B2"',
-            $wavelength, $psi_data,
-        with => 'lines', legend => 'Fit',
-            lw => 2, dt => 1, lc => 'rgb "#D55E00"',
-            $wavelength, $psi_fit,
+        @psi_curves,
     );
 
     # --- Delta panel ---
@@ -193,12 +233,7 @@ sub plot {
           xlabel => 'Wavelength (nm)',
           ylabel => '{/Symbol D} (deg)',
           key    => 'top left box' },
-        with => 'points', legend => 'Data',
-            pt => 7, ps => 1.2, lc => 'rgb "#0072B2"',
-            $wavelength, $delta_data,
-        with => 'lines', legend => 'Fit',
-            lw => 2, dt => 1, lc => 'rgb "#D55E00"',
-            $wavelength, $delta_fit,
+        @delta_curves,
     );
 
     $gp->end_multi;
