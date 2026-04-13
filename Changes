@@ -1,5 +1,8 @@
 Revision history for Physics-Ellipsometry-VASE
 
+0.03    2026-04-13
+	- Moved gnuplot legend to outside right of plot area. 
+
 0.02    2026-04-03
         - Auto-detect and parse J.A. Woollam VASE instrument files
         - Weighted fitting using measured sigma columns from Woollam data
