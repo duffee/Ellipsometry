@@ -5,7 +5,7 @@ use PDL;
 use PDL::Fit::LM;
 use PDL::NiceSlice;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 
 # Constructor
 sub new {
@@ -223,7 +223,7 @@ sub plot {
         { title  => '{/Symbol Y} (Psi)',
           xlabel => '',
           ylabel => '{/Symbol Y} (deg)',
-          key    => 'top right box' },
+          key    => 'outside right' },
         @psi_curves,
     );
 
@@ -232,7 +232,7 @@ sub plot {
         { title  => '{/Symbol D} (Delta)',
           xlabel => 'Wavelength (nm)',
           ylabel => '{/Symbol D} (deg)',
-          key    => 'top left box' },
+          key    => 'outside right' },
         @delta_curves,
     );
 
