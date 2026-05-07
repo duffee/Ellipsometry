@@ -238,7 +238,7 @@ def plot_wafer_fit(results, output_file):
 # ============================================================
 if __name__ == "__main__":
     # Load Ta metal optical constants (point-by-point)
-    ta_metal_file = "../../data/Metal_Oxides/Ta metal/ta_pbp.mat"
+    ta_metal_file = "ta_pbp.mat"
     ta_wav, ta_n, ta_k = load_mat_file(ta_metal_file)
     print(f"Ta metal: {len(ta_wav)} pts, {ta_wav[0]:.1f}-{ta_wav[-1]:.1f} nm")
 

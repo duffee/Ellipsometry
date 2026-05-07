@@ -37,7 +37,7 @@ use Physics::Ellipsometry::VASE::Parameter qw(param params_to_pdl pdl_to_params 
 # 1. Load substrate material (built-in .mat loader with eV→nm)
 # ============================================================
 my $ta_metal = load_material(
-    "$FindBin::Bin/../../data/Metal_Oxides/Ta metal/ta_pbp.mat"
+    "$FindBin::Bin/ta_pbp.mat"
 );
 printf "Ta metal: %d pts, %.1f-%.1f nm\n", $ta_metal->{npts},
        $ta_metal->{wav_min}, $ta_metal->{wav_max};

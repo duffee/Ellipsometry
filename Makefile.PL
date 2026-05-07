@@ -56,5 +56,11 @@ WriteMakefile(
             '$(INST_LIB)/Physics/Ellipsometry/VASE/Parameter.pm',
         'lib/Physics/Ellipsometry/VASE/Optimizer.pm' =>
             '$(INST_LIB)/Physics/Ellipsometry/VASE/Optimizer.pm',
+        'lib/PDL/Demos/Ellipsometry.pm' =>
+            '$(INST_LIB)/PDL/Demos/Ellipsometry.pm',
+        'lib/PDL/Demos/demo_wafer.dat' =>
+            '$(INST_LIB)/PDL/Demos/demo_wafer.dat',
+        'lib/PDL/Demos/demo_ta_metal.mat' =>
+            '$(INST_LIB)/PDL/Demos/demo_ta_metal.mat',
     },
 );
