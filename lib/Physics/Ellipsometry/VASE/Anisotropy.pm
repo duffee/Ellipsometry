@@ -8,7 +8,7 @@ use Exporter 'import';
 
 our @EXPORT_OK = qw(uniaxial_epsilon biaxial_epsilon tensor_epsilon berreman_4x4);
 
-our $VERSION = '0.01';
+our $VERSION = '1.02';
 
 =encoding utf8
 

@@ -7,7 +7,7 @@ use Exporter 'import';
 
 our @EXPORT_OK = qw(ema_linear ema_bruggeman ema_maxwell_garnett ema_looyenga);
 
-our $VERSION = '0.01';
+our $VERSION = '1.02';
 
 =encoding utf8
 

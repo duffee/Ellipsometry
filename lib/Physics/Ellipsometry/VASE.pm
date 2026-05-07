@@ -533,12 +533,16 @@ Tauc-Lorentz oscillator model with numerical Kramers-Kronig integration.
 
 =head1 SEE ALSO
 
-L<Physics::Ellipsometry::VASE::TMM>,
+L<Physics::Ellipsometry::VASE::Anisotropy>,
 L<Physics::Ellipsometry::VASE::Dispersion>,
 L<Physics::Ellipsometry::VASE::EMA>,
+L<Physics::Ellipsometry::VASE::MagnetoOptic>,
 L<Physics::Ellipsometry::VASE::Materials>,
+L<Physics::Ellipsometry::VASE::Optimizer>,
 L<Physics::Ellipsometry::VASE::Parameter>,
-L<Physics::Ellipsometry::VASE::Optimizer>
+L<Physics::Ellipsometry::VASE::Temperature>,
+L<Physics::Ellipsometry::VASE::TMM>,
+L<PDL::Demos::Ellipsometry>
 
 L<PDL>, L<PDL::Fit::LM>, L<PDL::Graphics::Gnuplot>
 

@@ -8,7 +8,7 @@ use Exporter 'import';
 
 our @EXPORT_OK = qw(temperature_bandgap temperature_drude temperature_thermo_optic);
 
-our $VERSION = '0.01';
+our $VERSION = '1.02';
 
 =encoding utf8
 
