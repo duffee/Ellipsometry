@@ -9,34 +9,176 @@ our @EXPORT_OK = qw(load_material interpolate_material);
 
 our $VERSION = '0.01';
 
+=encoding utf8
+
 =head1 NAME
 
-Physics::Ellipsometry::VASE::Materials - Optical constants file loader
+Physics::Ellipsometry::VASE::Materials - Load and interpolate tabulated
+optical constants
+
+=head1 SYNOPSIS
+
+    use PDL;
+    use Physics::Ellipsometry::VASE::Materials qw(load_material
+                                                   interpolate_material);
+
+    # Load a Woollam .mat file (auto-detects eV↔nm)
+    my $si = load_material('Si_jaw.mat');
+
+    printf "Material : %s\n",   $si->{name};
+    printf "Points   : %d\n",   $si->{npts};
+    printf "Range    : %.1f – %.1f nm\n", $si->{wav_min}, $si->{wav_max};
+
+    # Interpolate onto the measurement wavelength grid
+    my $lambda = sequence(500) * 2 + 300;        # 300–1298 nm
+    my ($n_si, $k_si) = interpolate_material($si, $lambda);
+
+    # Build the complex refractive index for TMM
+    my $N_si = $n_si + i() * $k_si;
 
 =head1 DESCRIPTION
 
-Loads point-by-point (PBP) optical constant files (.mat format) used by
-WVASE and other ellipsometry software. Handles automatic eV↔nm conversion
-and provides interpolation to arbitrary wavelength grids.
+In spectroscopic ellipsometry the optical model usually contains at
+least one material whose refractive index is not described by a simple
+parametric formula but is instead given as a table of measured values —
+for example, a crystalline silicon substrate or a metal reference layer.
+These are called B<point-by-point> (PBP) optical constants.
+
+Physics::Ellipsometry::VASE::Materials loads such tabulated data from
+disk and provides linear interpolation to an arbitrary wavelength grid,
+so the constants can be used directly by L<Physics::Ellipsometry::VASE::TMM>
+or any model function.
+
+When a file stores its spectral axis in electron-volts (eV) the module
+converts automatically to nanometres via
+
+    λ (nm) = 1239.842 / E (eV)
+
+and reverses the data order if necessary to ensure wavelengths are
+ascending.
 
 =head1 SUPPORTED FORMATS
 
-=over
+=head2 Woollam .mat format
 
-=item Woollam .mat format
+The standard format produced by WVASE® and CompleteEASE.  The file has a
+three-line header followed by data columns:
 
-3-line header:
-  Line 1: material name
-  Line 2: units (nm or eV)
-  Line 3: number of data points
-  Data: wavelength/energy  n  k
+    silicon
+    eV
+    469
+    0.6199  3.939  0.0240
+    0.6250  3.941  0.0242
+    ...
 
-=item Generic 3-column format
+=over 4
 
-Tab or space-separated: wavelength(nm)  n  k
-No header, or lines starting with # are comments.
+=item Line 1 — material name (free text)
+
+=item Line 2 — spectral units: C<nm> or C<eV>
+
+=item Line 3 — number of data points
+
+=item Data — three whitespace-separated columns: wavelength (or energy),
+I<n>, I<k>
 
 =back
+
+=head2 Generic 3-column format
+
+A plain text file with three whitespace-separated columns (wavelength in
+nm, I<n>, I<k>).  Comment lines beginning with C<#> and blank lines are
+skipped.  No header is required.
+
+    # wavelength(nm)  n       k
+    300.0              1.540   0.000
+    310.0              1.538   0.000
+    ...
+
+=head1 FUNCTIONS
+
+=head2 load_material
+
+    my $mat = load_material($filepath);
+
+Reads a tabulated optical-constants file and returns a hashref with:
+
+=over 4
+
+=item C<name> — material name (from header, or filename for generic files)
+
+=item C<wavelength> — PDL piddle of wavelengths in nm (ascending order)
+
+=item C<n> — PDL piddle of refractive index values
+
+=item C<k> — PDL piddle of extinction coefficient values
+
+=item C<npts> — number of data points
+
+=item C<wav_min> — shortest wavelength (nm)
+
+=item C<wav_max> — longest wavelength (nm)
+
+=back
+
+The format (Woollam vs generic) is auto-detected.  If the file stores
+data in eV the conversion to nm is performed automatically.
+
+    my $ta = load_material('ta_pbp.mat');
+    my $sio2 = load_material('SiO2_Palik.dat');
+
+=head2 interpolate_material
+
+    my ($n, $k) = interpolate_material($material, $lambda_nm);
+
+Linearly interpolates the tabulated I<n> and I<k> values in C<$material>
+(as returned by L</load_material>) onto the wavelength grid
+C<$lambda_nm>.
+
+B<Important:> the target wavelengths should lie within the range
+C<[wav_min, wav_max]> of the loaded material.  Values outside this range
+are extrapolated linearly, which may be inaccurate.
+
+    my $lambda = sequence(500) * 2 + 300;
+    my ($n, $k) = interpolate_material($ta, $lambda);
+
+    # Use in a TMM calculation
+    my $N_sub = $n + i() * $k;
+
+=head1 TYPICAL WORKFLOW
+
+    use Physics::Ellipsometry::VASE::Materials qw(load_material
+                                                   interpolate_material);
+    use Physics::Ellipsometry::VASE::TMM qw(psi_delta);
+    use Physics::Ellipsometry::VASE::Dispersion qw(cauchy_nk);
+
+    # 1. Load substrate from a .mat file
+    my $sub = load_material('Si_jaw.mat');
+
+    # 2. Define measurement grid
+    my $lambda = sequence(400) * 2.5 + 300;
+    my $theta  = ones($lambda) * 70;
+
+    # 3. Interpolate substrate onto measurement grid
+    my ($n_sub, $k_sub) = interpolate_material($sub, $lambda);
+    my $N_sub = $n_sub + i() * $k_sub;
+
+    # 4. Film from a parametric model
+    my ($n_film, $k_film) = cauchy_nk($lambda, 1.46, 0.003, 0.0);
+    my $N_film = $n_film + i() * $k_film;
+
+    # 5. Ambient
+    my $N_air = ones($lambda) + i() * zeroes($lambda);
+
+    # 6. Calculate Psi/Delta
+    my ($psi, $delta) = psi_delta($lambda, $theta,
+        [$N_air, $N_film, $N_sub], [100.0]);
+
+=head1 SEE ALSO
+
+L<Physics::Ellipsometry::VASE>,
+L<Physics::Ellipsometry::VASE::TMM>,
+L<Physics::Ellipsometry::VASE::Dispersion>
 
 =cut
 

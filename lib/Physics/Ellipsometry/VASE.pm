@@ -354,7 +354,7 @@ Version 1.01
 
 =head1 DESCRIPTION
 
-Physics::Ellipsometry::VASE v1.00 provides a complete framework for
+Physics::Ellipsometry::VASE v1.01 provides a complete framework for
 spectroscopic ellipsometry analysis including:
 
 =over
@@ -379,43 +379,13 @@ spectroscopic ellipsometry analysis including:
 
 =head1 METHODS
 
-=head2 new(%args)
+=head2 new
 
-Constructor. Options: layers, circular_delta, deriv_step, min_deriv_step,
-maxiter, eps, lm_reg_floor.
+    my $vase = Physics::Ellipsometry::VASE->new(%args);
 
-=head2 load_data($filename)
-
-Loads data file. Auto-detects Woollam VASE format vs plain text.
-
-=head2 set_model($coderef)
-
-Sets the model function. Signature: ($params_pdl, $x_data) -> $y_pdl
-
-=head2 fit($initial_params, %opts)
-
-Levenberg-Marquardt fit with circular delta handling and regularization.
-
-=head2 mse($fit_params, nparams => N)
-
-Calculates WVASE-convention MSE: sqrt(chi2 / (2*npts - nparams)).
-
-=head2 plot($fit_params, output => 'file.png', title => '...')
-
-Multiplot of Psi/Delta data and fit, grouped by angle.
-
-=head1 SEE ALSO
-
-L<Physics::Ellipsometry::VASE::TMM>,
-L<Physics::Ellipsometry::VASE::Dispersion>,
-L<Physics::Ellipsometry::VASE::EMA>,
-L<Physics::Ellipsometry::VASE::Materials>,
-L<Physics::Ellipsometry::VASE::Parameter>,
-L<Physics::Ellipsometry::VASE::Optimizer>
-
-=cut
-
-=head1 METHODS
+Constructor.  Accepts the following options: C<layers> (number of thin-film
+layers), C<circular_delta> (enable circular Delta residuals),
+C<deriv_step>, C<min_deriv_step>, C<maxiter>, C<eps>, C<lm_reg_floor>.
 
 =head2 load_data
 
@@ -494,6 +464,13 @@ The fit uses relative-step finite differences for the numerical Jacobian
 (step size C<|p_i| * 1e-7 + 1e-10>) and converges when the relative change
 in chi-squared falls below 1e-7, or after 300 iterations.
 
+=head2 mse
+
+    my $mse = $vase->mse($fit_params, nparams => $n);
+
+Calculates WVASE-convention mean squared error:
+C<sqrt(chi2 / (2*npts - nparams))>.
+
 =head2 plot
 
     $vase->plot($fit_params, %options);
@@ -519,24 +496,6 @@ Title string for the plot (default: C<"VASE Fit Results">).
 
 When multiple angles of incidence are present, each angle is plotted as a
 separate colour-coded series.
-
-=head1 DATA FORMAT
-
-=head2 Simple Format
-
-    # Wavelength(nm)  Angle(deg)  Psi(deg)  Delta(deg)
-    400  70  45.0  120.0
-
-=head2 Woollam VASE Format
-
-    sample_name
-    VASEmethod[EllipsometerType=4, ...]
-    Original[filename.dat]
-    nm
-    400.000  70.000  45.000  120.000  0.010  0.020
-    ...
-
-Columns: wavelength, angle, psi, delta, sigma_psi, sigma_delta.
 
 =head1 EXAMPLES
 
@@ -574,6 +533,13 @@ Tauc-Lorentz oscillator model with numerical Kramers-Kronig integration.
 
 =head1 SEE ALSO
 
+L<Physics::Ellipsometry::VASE::TMM>,
+L<Physics::Ellipsometry::VASE::Dispersion>,
+L<Physics::Ellipsometry::VASE::EMA>,
+L<Physics::Ellipsometry::VASE::Materials>,
+L<Physics::Ellipsometry::VASE::Parameter>,
+L<Physics::Ellipsometry::VASE::Optimizer>
+
 L<PDL>, L<PDL::Fit::LM>, L<PDL::Graphics::Gnuplot>
 
 H. Fujiwara, I<Spectroscopic Ellipsometry: Principles and Applications>,
@@ -594,174 +560,5 @@ Copyright 2026 Jovan Trujillo.
 This is free software; you can redistribute it and/or modify it under the
 same terms as the Perl 5 programming language system itself.  See
 L<https://dev.perl.org/licenses/> for details.
-
-=cut
-
-__END__
-
-=head1 NAME
-
-Physics::Ellipsometry::VASE - Variable Angle Spectroscopic Ellipsometry data fitting
-
-=head1 VERSION
-
-Version 1.01
-
-=head1 SYNOPSIS
-
-    use PDL;
-    use PDL::NiceSlice;
-    use Physics::Ellipsometry::VASE;
-
-    my $vase = Physics::Ellipsometry::VASE->new(layers => 1);
-    $vase->load_data('data.dat');
-
-    sub my_model {
-        my ($params, $x) = @_;
-        my $a = $params->(0);
-        my $b = $params->(1);
-        my $c = $params->(2);
-        my $d = $params->(3);
-        my $wavelength = $x->(:,0);
-
-        my $psi   = $a - $b * $wavelength;
-        my $delta = $c + $d * $wavelength;
-
-        return cat($psi, $delta)->flat;
-    }
-
-    $vase->set_model(\&my_model);
-
-    my $fit_params = $vase->fit(pdl [65, 0.05, 80, 0.1]);
-    print "Fitted: $fit_params\n";
-
-=head1 DESCRIPTION
-
-Physics::Ellipsometry::VASE provides Levenberg-Marquardt fitting of
-user-defined optical models to variable angle spectroscopic ellipsometry
-(VASE) data.  It wraps L<PDL::Fit::LM> and handles the bookkeeping of
-mapping between the simple user model interface and the lmfit calling
-convention, including automatic numerical computation of the Jacobian
-via finite differences.
-
-Ellipsometry measures the change in polarization state of light reflected
-from a surface.  The two measured quantities are B<Psi> (amplitude ratio)
-and B<Delta> (phase difference).  This module fits models that predict
-both Psi and Delta simultaneously as a function of wavelength and
-angle of incidence.
-
-=head1 DATA FORMAT
-
-Input files should contain whitespace-separated columns:
-
-    # Wavelength(nm)  Angle(deg)  Psi(deg)  Delta(deg)
-    400  70  45.0  120.0
-    410  70  44.5  121.0
-
-Lines beginning with C<#> and blank lines are skipped.
-
-=head1 MODEL FUNCTIONS
-
-A model function receives two arguments and must return a single
-flattened PDL piddle:
-
-    sub model {
-        my ($params, $x) = @_;
-
-        # $params: PDL piddle of fit parameters
-        # $x:      PDL piddle of shape (npoints, 2)
-        #          $x->(:,0) = wavelength (nm)
-        #          $x->(:,1) = angle of incidence (deg)
-
-        my $psi   = ...;   # compute Psi  (npoints)
-        my $delta = ...;   # compute Delta (npoints)
-
-        return cat($psi, $delta)->flat;
-    }
-
-The Jacobian (partial derivatives with respect to parameters) is
-computed automatically via numerical finite differences.
-
-=head1 METHODS
-
-=head2 new
-
-    my $vase = Physics::Ellipsometry::VASE->new(%args);
-
-Constructor.  Accepts:
-
-=over 4
-
-=item layers
-
-Number of layers in the optical model (default: 1).
-
-=item model
-
-Optional code reference to a model function.
-
-=back
-
-=head2 load_data
-
-    $vase->load_data($filename);
-
-Reads ellipsometry data from a whitespace-delimited file.
-Returns the loaded data as a PDL piddle.
-
-=head2 set_model
-
-    $vase->set_model(\&model_func);
-
-Sets the model function used for fitting.
-
-=head2 fit
-
-    my $fitted_params = $vase->fit($initial_params);
-
-Performs Levenberg-Marquardt fitting.  C<$initial_params> is a PDL
-piddle of initial guesses.  Returns a PDL piddle of fitted parameters.
-
-=head2 plot
-
-    $vase->plot($fit_params);
-    $vase->plot($fit_params, output => 'fit.png');
-    $vase->plot($fit_params, output => 'fit.pdf', title => 'My Fit');
-
-Plots raw data points with model fit overlay in a two-panel layout
-(Psi on top, Delta on bottom).  Requires L<PDL::Graphics::Gnuplot>.
-
-Options:
-
-=over 4
-
-=item output
-
-File path for saving the plot.  Format is inferred from the extension
-(C<.png>, C<.pdf>, C<.svg>, C<.eps>).  If omitted, displays an
-interactive window.
-
-=item title
-
-Overall plot title (default: C<VASE Fit Results>).
-
-=back
-
-=head1 DEPENDENCIES
-
-L<PDL>, L<PDL::Fit::LM>, L<PDL::NiceSlice>
-
-L<PDL::Graphics::Gnuplot> is required only for the C<plot> method.
-
-=head1 AUTHOR
-
-jtrujil1
-
-=head1 LICENSE AND COPYRIGHT
-
-This software is copyright (c) 2026.
-
-This is free software; you can redistribute it and/or modify it under
-the same terms as the Perl 5 programming language system itself.
 
 =cut

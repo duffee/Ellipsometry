@@ -575,28 +575,194 @@ sub done {'
 
 __END__
 
+=encoding utf8
+
 =head1 NAME
 
-PDL::Demos::Ellipsometry - PDL demo for spectroscopic ellipsometry analysis
+PDL::Demos::Ellipsometry - Interactive PDL demo for spectroscopic
+ellipsometry analysis
 
-=head1 DESCRIPTION
+=head1 SYNOPSIS
 
-Interactive demo for the C<Physics::Ellipsometry::VASE> module,
-demonstrating thin-film optical modeling and fitting with PDL.
-
-Launched from the C<perldl> shell:
+Launch from the C<perldl> or C<pdl2> shell:
 
     pdl> demo ellipsometry
 
-Covers synthetic data generation, Cauchy dispersion models,
-Fresnel equations, multi-layer TMM modeling, and Levenberg-Marquardt
-fitting.  Plots are generated using L<PDL::Graphics::Simple>.
+Requires L<PDL::Graphics::Simple> for plotting.
+
+=head1 DESCRIPTION
+
+This demo provides a hands-on walkthrough of thin-film optical modelling
+and Levenberg-Marquardt fitting using L<Physics::Ellipsometry::VASE> and
+PDL.  It progresses from simple linear models to realistic multi-layer
+structures, showing the code at each step and generating interactive
+plots.
+
+=head1 DEMO SECTIONS
+
+The demo is divided into three parts of increasing complexity.  Each
+part shows the code being executed, prints results to the terminal,
+and produces plots via L<PDL::Graphics::Simple>.
+
+=head2 Part 1 — Linear model (synthetic data)
+
+Introduces the basic VASE workflow with a trivial linear model.  This
+verifies the fitting infrastructure without any optics:
+
+B<Step 1: Generate synthetic data>
+
+    $wavelength = pdl [400, 410, 420, 430, 440];
+    $angle      = 70 * ones(5);
+    $psi        = 45.0 - 0.05 * $wavelength;
+    $delta      = 80.0 + 0.10 * $wavelength;
+
+B<Step 2: Write to a file and load into a VASE object>
+
+    $vase = Physics::Ellipsometry::VASE->new(layers => 1);
+    $data = $vase->load_data($tmpfile);
+
+B<Step 3: Define and fit a linear model>
+
+    sub linear_model {
+        my ($params, $x) = @_;
+        my ($a, $b, $c, $d) = map { $params->slice("($_)") } 0..3;
+        my $wl  = $x->slice(",(0)")->flat;
+        my $psi = $a - $b * $wl;
+        my $del = $c + $d * $wl;
+        return cat($psi, $del)->flat;
+    }
+
+    $vase->set_model(\&linear_model);
+    $fit = $vase->fit(pdl [65, 0.05, 80, 0.1]);
+
+B<Step 4: Plot> — two-panel plot of Psi and Delta vs wavelength, showing
+data points and the fitted line.
+
+=head2 Part 2 — Cauchy dispersion on Si (simulated data)
+
+Introduces real thin-film physics: the Cauchy dispersion model combined
+with Fresnel equations and thin-film interference.
+
+B<The Cauchy model> predicts the refractive index of a transparent film:
+
+    n(lambda) = A + B/lambda^2 + C/lambda^4
+
+B<Step 1: Simulate realistic SiO2/Si data>
+
+    $wl_sim = sequence(21) * 15 + 400;    # 400–700 nm
+    $n_true = 1.46 + 3400.0 / $wl_sim**2;
+
+B<Step 2: Define the Fresnel + Cauchy model> — computes Psi and Delta
+from a single-layer Air/SiO2/Si stack using explicit Fresnel
+coefficients, Snell's law, and thin-film phase thickness:
+
+    sub fresnel_cauchy {
+        my ($par, $x) = @_;
+        my $n1 = $A + $B / $lam**2;          # Cauchy dispersion
+        my $beta = (2*PI/$lam) * $n1 * $d * cos($th1);  # phase
+        # ... Fresnel coefficients, Airy formula ...
+        my $rho = $rp / $rs;
+        my $psi = atan(abs($rho)) * (180/PI);
+        my $delta = carg($rho) * (180/PI);
+        return cat($psi->re, $delta->re)->flat->double;
+    }
+
+B<Step 3: Fit from a deliberately offset starting guess>
+
+    $true_params = pdl [1.46, 0.34, 3.87, 100.0];  # A, B, n_sub, d
+    $guess       = pdl [1.50, 0.50, 3.50,  80.0];  # wrong on purpose
+    $cauchy_fit  = $cauchy_vase->fit($guess);
+
+B<Step 4: Plot> — Psi and Delta panels comparing noisy simulated data
+with the converged fit.
+
+=head2 Part 3 — Multi-layer TMM fit (real VASE data)
+
+The most advanced section: fits a three-layer model to real
+multi-angle spectroscopic ellipsometry data using the built-in
+TMM, Dispersion, EMA, and Materials sub-modules.
+
+B<Sample structure:>
+
+    Air / Ta2O5 (Cauchy) / EMA roughness / Ta metal substrate
+
+B<Modules used:>
+
+    use Physics::Ellipsometry::VASE::TMM qw(psi_delta);
+    use Physics::Ellipsometry::VASE::Dispersion qw(cauchy_nk);
+    use Physics::Ellipsometry::VASE::EMA qw(ema_linear);
+    use Physics::Ellipsometry::VASE::Materials qw(load_material
+                                                   interpolate_material);
+
+B<Step 1: Load tabulated Ta metal substrate>
+
+    $ta_metal = load_material("${demo_dir}demo_ta_metal.mat");
+
+B<Step 2: Load real Woollam VASE data> (three angles of incidence:
+65°, 70°, 75°, ~500 data points):
+
+    $ml_vase = Physics::Ellipsometry::VASE->new(
+        layers => 3, circular_delta => 1,
+    );
+    $ml_vase->load_data("${demo_dir}demo_wafer.dat");
+
+B<Step 3: Define the 6-parameter multi-layer model>
+
+    sub multilayer_model {
+        my ($params, $x_data) = @_;
+        # Cauchy dispersion for Ta2O5
+        my ($n1, $k1) = cauchy_nk($lambda, $A, $B, $C);
+        # EMA roughness layer (Ta2O5 + void)
+        my $N2 = sqrt(ema_linear($N1**2, $eps_void, $vf_void));
+        # Ta metal substrate from tabulated data
+        my ($n_ta, $k_ta) = interpolate_material($ta_metal, $lambda);
+        # TMM for the full stack
+        my ($psi, $delta) = psi_delta($lambda, $theta,
+            [$N0, $N1, $N2, $N3], [$d_film, $d_ema]);
+        return $psi->append($delta);
+    }
+
+B<Step 4: Grid search over thickness> to find the correct interference
+order, then B<Levenberg-Marquardt refinement>:
+
+    # Grid search
+    for my $d_s (map { $_ * 0.02 + 1.5 } (0..50)) { ... }
+
+    # LM refinement from grid-search starting point
+    $ml_fit = $ml_vase->fit($ml_guess);
+
+B<Step 5: Plot> — colour-coded multi-angle data and fit curves for both
+Psi and Delta.
+
+=head1 DATA FILES
+
+Two data files are shipped alongside this module and used by the
+multi-layer demo:
+
+=over 4
+
+=item F<demo_wafer.dat>
+
+Woollam VASE measurement of a Ta2O5-on-Ta sample at three angles of
+incidence.
+
+=item F<demo_ta_metal.mat>
+
+Point-by-point optical constants (n, k vs eV) for the tantalum metal
+substrate.
+
+=back
 
 =head1 SEE ALSO
 
-L<Physics::Ellipsometry::VASE>, L<Physics::Ellipsometry::VASE::TMM>,
-L<Physics::Ellipsometry::VASE::Dispersion>, L<PDL::Demos>,
-L<PDL::Fit::LM>, L<PDL::Graphics::Simple>
+L<Physics::Ellipsometry::VASE>,
+L<Physics::Ellipsometry::VASE::TMM>,
+L<Physics::Ellipsometry::VASE::Dispersion>,
+L<Physics::Ellipsometry::VASE::EMA>,
+L<Physics::Ellipsometry::VASE::Materials>,
+L<PDL::Demos>,
+L<PDL::Fit::LM>,
+L<PDL::Graphics::Simple>
 
 =head1 AUTHOR
 
