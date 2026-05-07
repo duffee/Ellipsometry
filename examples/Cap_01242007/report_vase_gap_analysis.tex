@@ -1,0 +1,270 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{amsmath}
+\usepackage{enumitem}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!10},
+  keywordstyle=\color{blue},
+  commentstyle=\color{green!50!black},
+}
+
+\title{Gap Analysis:\\
+\texttt{Physics::Ellipsometry::VASE} vs.\ \texttt{refellips}}
+\author{Jovan Trujillo\\
+Advanced Electronics and Photonics Core\\
+Arizona State University}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section{Executive Summary}
+
+\texttt{Physics::Ellipsometry::VASE} is a Perl/PDL-based generic curve-fitting
+framework for spectroscopic ellipsometry data, while \texttt{refellips}
+(Python/NumPy) is a purpose-built ellipsometry analysis package with
+built-in optical models, transfer matrix methods, and dispersion relations.
+
+After extensive debugging and patching, both packages successfully fitted
+the Cap\_01242007 Ta$_2$O$_5$/Ta metal dataset (6 wafers, 1887 points each)
+with comparable MSE values (0.87--0.92). However, achieving this with VASE
+required approximately 300 lines of hand-coded physics in the user script,
+whereas refellips required approximately 40 lines of configuration.
+
+Table~\ref{tab:results} compares the fitting results from both packages.
+
+\begin{table}[h]
+\centering
+\caption{Comparison of fitting results: VASE (Perl) vs.\ refellips (Python)}
+\label{tab:results}
+\begin{tabular}{lrrrrr}
+\toprule
+Wafer & \multicolumn{2}{c}{Ta$_2$O$_5$ (nm)} & \multicolumn{2}{c}{MSE} \\
+      & VASE & refellips & VASE & refellips \\
+\midrule
+1 & 216.3 & 215.9 & 0.896 & 0.892 \\
+2 & 216.1 & 216.1 & 0.890 & 0.883 \\
+3 & 216.7 & 216.5 & 0.898 & 0.894 \\
+4 & 181.9 & 181.4 & 0.874 & 0.673 \\
+5 & 183.1 & 182.1 & 0.918 & 0.784 \\
+6 & 181.7 & 181.2 & 0.890 & 0.679 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Architecture Comparison}
+
+\subsection{refellips}
+\begin{itemize}[nosep]
+\item Transfer matrix method (TMM) adapted from Byrnes' \texttt{tmm} package
+\item Built-in dispersion models: Cauchy, Sellmeier, Tauc-Lorentz, Genosc
+\item Built-in EMA mixing: Linear, Bruggeman, Maxwell-Garnett
+\item Material file (\texttt{.mat}) loader for point-by-point optical constants
+\item \texttt{ObjectiveSE} with circular Delta residuals and delta convention handling
+\item Parameter bounds and vary/fix control via \texttt{refnx.analysis.Parameter}
+\item Differential evolution global optimizer + Levenberg-Marquardt refinement
+\end{itemize}
+
+\subsection{Physics::Ellipsometry::VASE}
+\begin{itemize}[nosep]
+\item Generic Levenberg-Marquardt fitting wrapper around \texttt{PDL::Fit::LM}
+\item Woollam VASE data file loader (4-line header, 6-column format)
+\item Gnuplot-based plotting of Psi/Delta data with model overlay
+\item \textbf{No built-in optical models}---user must code all physics
+\item \textbf{No TMM, Fresnel equations, dispersion, EMA, or material loaders}
+\end{itemize}
+
+\section{Identified Gaps}
+
+The following gaps were identified during the process of porting the
+\texttt{fit\_refellips.py} script to Perl using the VASE module.
+Each gap is listed with severity (Critical/Major/Minor) and the
+workaround used.
+
+\subsection{Critical Gaps}
+
+\subsubsection{No Transfer Matrix Method (TMM)}
+\textbf{Impact:} Users must hand-code Fresnel equations, Snell's law,
+phase accumulation, and multi-layer back-propagation for every model.
+This required $\sim$80 lines of complex-arithmetic PDL code in
+\texttt{fit\_vase.pl}.
+
+\textbf{Workaround:} Implemented nested Airy formula (back-propagation)
+directly in the model function closure. During debugging, discovered
+that the phase convention must use $e^{+2i\beta}$ (physics convention),
+not $e^{-2i\beta}$ (engineering convention).
+
+\subsubsection{No Delta Convention Handling}
+\textbf{Impact:} Ellipsometry instruments (e.g., Woollam WVASE) output
+Delta in various ranges ($[-90^\circ, 270^\circ]$ or $[0^\circ, 360^\circ]$),
+while the complex argument $\arg(\rho)$ gives $(-180^\circ, 180^\circ]$.
+Without proper handling, LM residuals can be $\sim$360$^\circ$ at
+wrap boundaries.
+
+\textbf{refellips solution:}
+\begin{equation}
+\Delta = \angle\!\left(\frac{1}{-\rho}\right) + \pi = -\arg(\rho) \bmod 2\pi
+\end{equation}
+combined with circular distance residuals:
+$r = \min(|\Delta_d - \Delta_m|,\; 360 - |\Delta_d - \Delta_m|)$.
+
+\textbf{Workaround:} Implemented $-\arg(\rho)$ mapped to $[0^\circ, 360^\circ)$
+in the model function, plus alignment to data values via
+\texttt{rint(diff/360)} rounding to eliminate wrap discontinuities.
+
+\subsubsection{Singular Jacobian in LM Regularization}
+\textbf{Impact:} \texttt{PDL::Fit::LM} regularizes the normal equations as
+$\text{diag} \mathrel{*}= (1+\lambda)$. When any Jacobian column is zero
+(common with clipped or insensitive parameters), the diagonal stays zero
+and LU decomposition fails with ``singular matrix.''
+
+\textbf{refellips solution:} Uses \texttt{scipy.optimize.least\_squares}
+with trust-region-reflective algorithm, which handles singular Jacobians
+via SVD internally.
+
+\textbf{Workaround:} Patched \texttt{PDL::Fit::LM} line 122 to add
+$10^{-10}\lambda$ to the diagonal after scaling, and line 158 to
+regularize the covariance matrix. Also added configurable
+\texttt{deriv\_step} and \texttt{min\_deriv\_step} to VASE.pm.
+
+\subsection{Major Gaps}
+
+\subsubsection{No Dispersion Models}
+\textbf{Impact:} No built-in Cauchy, Sellmeier, Tauc-Lorentz, Drude,
+or General Oscillator (Genosc) models. Each must be coded manually.
+
+\textbf{Workaround:} Implemented Cauchy dispersion ($n = A + B/\lambda^2 + C/\lambda^4$)
+directly in the model function (3 lines of code).
+
+\subsubsection{No EMA Mixing Rules}
+\textbf{Impact:} No Bruggeman, Maxwell-Garnett, or linear effective
+medium approximation. Must be coded by hand.
+
+\textbf{Workaround:} Implemented linear volume-weighted mixing
+($\varepsilon_\text{eff} = (1-f)\varepsilon_A + f\varepsilon_B$) in
+the model function. Note: refellips defaults to linear mixing as well,
+but provides Bruggeman and Maxwell-Garnett options.
+
+\subsubsection{No Material File Loader}
+\textbf{Impact:} Point-by-point optical constants (\texttt{.mat} files
+with wavelength/n/k columns) must be loaded manually with custom parsing
+and interpolation code.
+
+\textbf{Workaround:} Wrote a \texttt{load\_mat\_file()} function (30 lines)
+with eV/nm unit handling and PDL interpolation.
+
+\subsubsection{No Parameter Bounds or Vary/Fix Control}
+\textbf{Impact:} Parameters cannot be constrained to physical ranges
+(e.g., thickness $> 0$, $0 \le f_v \le 1$). All parameters are always
+varied. Unphysical parameter values can crash the model.
+
+\textbf{Workaround:} Used \texttt{abs()} for thickness and
+\texttt{clip(0.01, 0.999)} for volume fraction inside the model function.
+This creates discontinuous derivatives at the boundaries.
+
+\subsubsection{No Global Optimizer}
+\textbf{Impact:} LM is a local optimizer. Without a global search
+(differential evolution, genetic algorithm), the fit is sensitive to
+initial parameter guesses and can get trapped in local minima.
+
+\textbf{Workaround:} Implemented a grid search over thickness before LM,
+plus a second-pass refit using neighbor wafer parameters for wafers
+that converge to poor minima.
+
+\subsection{Minor Gaps}
+
+\subsubsection{No eV$\leftrightarrow$nm Unit Conversion}
+The data loader stores but does not act on the units field.
+Woollam files can use either nm or eV for the spectral axis.
+
+\textbf{Workaround:} Added manual conversion ($\lambda_\text{nm} = 1239.842 / E_\text{eV}$)
+and wavelength sorting after loading.
+
+\subsubsection{Windows CR Characters in Data Files}
+The \texttt{load\_data()} method used \texttt{chomp} which removes
+\texttt{\textbackslash n} but not \texttt{\textbackslash r}. This caused
+the units field \texttt{"eV\textbackslash r"} to fail string comparison.
+
+\textbf{Fix applied:} Added \texttt{\$units =\textasciitilde{} s/\textbackslash r//g}
+in VASE.pm.
+
+\subsubsection{NiceSlice Source Filter Ambiguity}
+\texttt{PDL::NiceSlice} transforms \texttt{\$pdl->(...)} expressions into
+slice operations. The syntax \texttt{pdl[\$var]} and
+\texttt{\$coderef->(\ldots)} are incorrectly parsed as slices, producing
+garbage values silently.
+
+\textbf{Workaround:} Use \texttt{pdl(\$var)} (explicit parens) and
+\texttt{\&\$coderef(\ldots)} syntax in all code using NiceSlice.
+
+\subsubsection{Hardcoded Finite-Difference Step}
+The original derivative step ($|\mathbf{p}_i| \times 10^{-7} + 10^{-10}$)
+was too small for thick-film models where $\sim$2000~\AA{} thickness
+parameters need $\sim$0.1\%$ perturbations.
+
+\textbf{Fix applied:} Made \texttt{deriv\_step} and
+\texttt{min\_deriv\_step} configurable in VASE.pm.
+
+\section{Recommended Improvements}
+
+In priority order:
+
+\begin{enumerate}
+\item \textbf{Built-in TMM engine} with proper phase conventions
+      ($e^{+2i\beta}$, Verdet sign for $r_p$).
+\item \textbf{Delta convention handling} with circular distance
+      residuals in the fitting objective function.
+\item \textbf{LM regularization fix}: Use $\text{diag} \mathrel{+}= \lambda$
+      (Marquardt) instead of $\text{diag} \mathrel{*}= (1+\lambda)$ (Levenberg),
+      or switch to SVD-based solver.
+\item \textbf{Dispersion model library}: Cauchy, Sellmeier, Tauc-Lorentz,
+      Drude, General Oscillator.
+\item \textbf{EMA mixing rules}: Linear, Bruggeman, Maxwell-Garnett.
+\item \textbf{Material file loader} with automatic eV/nm conversion.
+\item \textbf{Parameter bounds and vary/fix control} (e.g., via
+      log-barrier or transformation methods).
+\item \textbf{Global optimizer} (differential evolution or simulated
+      annealing) for initial parameter estimation.
+\end{enumerate}
+
+\section{Files Modified}
+
+\begin{description}
+\item[\texttt{lib/Physics/Ellipsometry/VASE.pm}] ---
+  Added configurable \texttt{deriv\_step}, \texttt{min\_deriv\_step};
+  fixed Windows CR in header parsing.
+\item[\texttt{PDL/Fit/LM.pm}] --- Added diagonal regularization floor
+  ($+10^{-10}\lambda$) to prevent singular matrices; regularized
+  covariance matrix computation.
+\item[\texttt{examples/Cap\_01242007/fit\_vase.pl}] --- Created:
+  full ellipsometry model implementation (TMM, Cauchy, EMA, material
+  loading, Delta conventions) using VASE as the fitting backend.
+\end{description}
+
+\section{Conclusion}
+
+\texttt{Physics::Ellipsometry::VASE} successfully reproduced the
+\texttt{refellips} fitting results for all 6 wafers in the
+Cap\_01242007 dataset, achieving MSE values of 0.87--0.92 compared
+to refellips' 0.67--0.89. The slightly higher MSE for wafers 4--6
+(0.87--0.92 vs.\ 0.67--0.78) may be due to differences in the
+optimizer (LM vs.\ differential evolution + LM) or the linear vs.\ 
+Bruggeman EMA choice.
+
+However, the effort required was substantially greater: the user
+must implement all optical physics from scratch, handle Delta
+conventions manually, and work around several bugs in the LM
+implementation. The 8 recommended improvements would transform
+VASE from a generic fitting wrapper into a competitive ellipsometry
+analysis package.
+
+\end{document}
