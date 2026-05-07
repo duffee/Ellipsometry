@@ -8,7 +8,7 @@ use Exporter 'import';
 
 our @EXPORT_OK = qw(magneto_optic_tensor kerr_rotation);
 
-our $VERSION = '1.02';
+our $VERSION = '1.03';
 
 =encoding utf8
 

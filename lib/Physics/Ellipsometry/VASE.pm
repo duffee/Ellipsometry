@@ -6,7 +6,7 @@ use PDL::Fit::LM;
 use PDL::NiceSlice;
 use PDL::Constants qw(PI);
 
-our $VERSION = '1.02';
+our $VERSION = '1.03';
 
 # Sub-modules (loaded on demand)
 # use Physics::Ellipsometry::VASE::TMM;
@@ -321,7 +321,7 @@ Physics::Ellipsometry::VASE - Variable Angle Spectroscopic Ellipsometry analysis
 
 =head1 VERSION
 
-Version 1.02
+Version 1.03
 
 =head1 SYNOPSIS
 
@@ -354,7 +354,7 @@ Version 1.02
 
 =head1 DESCRIPTION
 
-Physics::Ellipsometry::VASE v1.02 provides a complete framework for
+Physics::Ellipsometry::VASE v1.03 provides a complete framework for
 spectroscopic ellipsometry analysis including:
 
 =over

@@ -8,7 +8,7 @@ use Exporter 'import';
 
 our @EXPORT_OK = qw(tmm_reflect psi_delta tmm_graded tmm_interface);
 
-our $VERSION = '1.02';
+our $VERSION = '1.03';
 
 =encoding utf8
 
