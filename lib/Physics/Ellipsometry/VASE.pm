@@ -321,7 +321,7 @@ Physics::Ellipsometry::VASE - Variable Angle Spectroscopic Ellipsometry analysis
 
 =head1 VERSION
 
-Version 1.01
+Version 1.02
 
 =head1 SYNOPSIS
 
@@ -354,7 +354,7 @@ Version 1.01
 
 =head1 DESCRIPTION
 
-Physics::Ellipsometry::VASE v1.01 provides a complete framework for
+Physics::Ellipsometry::VASE v1.02 provides a complete framework for
 spectroscopic ellipsometry analysis including:
 
 =over
